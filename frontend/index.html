@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroScan — MRI Classification</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page">
+
+    <!-- ═════════════════════════════════════
+         NAV
+         ═════════════════════════════════════ -->
+    <nav class="nav">
+        <div class="nav-inner">
+            <div class="brand">
+                <svg class="brand-mark" width="28" height="28" viewBox="0 0 28 28">
+                    <rect width="28" height="28" rx="7" fill="currentColor"/>
+                    <path d="M9 14h10M14 9v10" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                <span class="brand-name">NeuroScan</span>
+            </div>
+            <button class="theme-btn" id="themeToggle" aria-label="Toggle theme">
+                <svg class="sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                <svg class="moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- ═════════════════════════════════════
+         MAIN CONTENT
+         ═════════════════════════════════════ -->
+    <main class="main">
+
+        <!-- ═══ UPLOAD STATE ═══ -->
+        <section class="state state--upload" id="stateUpload">
+            <div class="upload">
+                <p class="kicker">Alzheimer's Detection</p>
+                <h1 class="title">Classify an MRI scan</h1>
+                <p class="lede">Upload a brain MRI for AI-assisted classification with confidence scores and attention heatmaps.</p>
+
+                <div class="drop" id="dropZone">
+                    <input type="file" id="fileInput" accept="image/jpeg,image/png" hidden>
+
+                    <div class="drop-empty" id="dropEmpty">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p class="drop-text">Drop image or <button class="inline-btn" id="browseBtn">browse</button></p>
+                        <p class="drop-meta">JPEG / PNG · up to 10 MB</p>
+                    </div>
+
+                    <div class="drop-preview" id="dropPreview" style="display:none">
+                        <img id="previewImg" src="" alt="Uploaded MRI">
+                        <button class="drop-clear" id="removeBtn" aria-label="Remove">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button class="btn-primary" id="analyzeBtn" disabled>
+                    <span>Run Analysis</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                </button>
+            </div>
+        </section>
+
+        <!-- ═══ LOADING STATE ═══ -->
+        <section class="state state--loading" id="stateLoading" style="display:none">
+            <div class="loading">
+                <div class="spinner"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div></div>
+                <p class="loading-text">Analyzing scan&hellip;</p>
+            </div>
+        </section>
+
+        <!-- ═══ RESULTS STATE ═══ -->
+        <section class="state state--results" id="stateResults" style="display:none">
+        <div class="results-grid">
+
+            <!-- Verdict -->
+            <div class="verdict" id="verdictBlock">
+                <div class="verdict-main">
+                    <p class="kicker">Classification Result</p>
+                    <h2 class="verdict-title" id="verdictClass">&mdash;</h2>
+                    <p class="verdict-sub" id="verdictDesc"></p>
+                </div>
+                <div class="verdict-stat">
+                    <span class="verdict-num" id="verdictScore">&mdash;</span>
+                    <span class="verdict-label">confidence</span>
+                </div>
+            </div>
+
+            <!-- Probabilities -->
+            <div class="card card--bars" id="cardBars">
+                <h3 class="card-title">Probability Distribution</h3>
+                <div class="bars" id="barsContainer"></div>
+            </div>
+
+            <!-- Heatmaps -->
+            <div class="card card--heatmaps" id="cardHeatmaps">
+                <h3 class="card-title">Attention Heatmaps</h3>
+                <p class="card-lead">Warmer colors indicate regions that most influenced the classification.</p>
+                <div class="heatmaps" id="heatmapsContainer"></div>
+            </div>
+
+            <!-- Details -->
+            <div class="card-meta">
+                <div class="meta"><span class="meta-key">Architecture</span><span class="meta-val">Vision Transformer (ViT)</span></div>
+                <div class="meta"><span class="meta-key">Performance</span><span class="meta-val">High (99.9% Acc)</span></div>
+                <div class="meta"><span class="meta-key">Input</span><span class="meta-val">224 &times; 224</span></div>
+            </div>
+
+            <!-- Disclaimer -->
+            <div class="notice">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <p>For research purposes only. Not intended for clinical diagnosis.</p>
+            </div>
+
+            <!-- Actions -->
+            <div class="results-actions">
+                <button class="btn-secondary" id="resetBtn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                    <span>New Scan</span>
+                </button>
+            </div>
+
+        </div>
+        </section>
+
+    </main>
+
+</div>
+
+<div class="toasts" id="toastBox"></div>
+<script src="js/app.js"></script>
+</body>
+</html>
