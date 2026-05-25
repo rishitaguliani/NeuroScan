@@ -99,96 +99,85 @@ def load_model():
         return False
 
 
-class ActivationMap:
-    """Activation Map visualization for EfficientNet-B2 - shows feature map activations."""
+class GradCAM:
+    """Grad-CAM attention visualization for EfficientNet-B2."""
 
-    def __init__(self, model, target_layer):
+    def __init__(self, model, target_layer="8.0"):
         self.model = model
         self.target_layer = target_layer
         self.activations = None
-        self.hook_handle = None
+        self.gradients = None
+        self._register_hooks()
 
-        # Register forward hook
-        self.register_hook()
-
-    def register_hook(self):
-        """Register forward hook to capture activations."""
+    def _register_hooks(self):
         def forward_hook(module, input, output):
-            self.activations = output.detach().clone()
+            self.activations = output
 
-        # Find the target layer and register hook
+        def backward_hook(module, grad_input, grad_output):
+            self.gradients = grad_output[0]
+
         for name, module in self.model.features.named_modules():
             if name == self.target_layer:
-                self.hook_handle = module.register_forward_hook(forward_hook)
+                self.handle_forward = module.register_forward_hook(forward_hook)
+                self.handle_backward = module.register_full_backward_hook(backward_hook)
                 break
 
-    def remove_hook(self):
-        """Remove the registered hook."""
-        if self.hook_handle:
-            self.hook_handle.remove()
-            self.hook_handle = None
+    def generate(self, input_tensor, class_idx=None):
+        """Generate Grad-CAM attention map with gradient-based weighting."""
+        # Forward pass (track gradients)
+        output = self.model(input_tensor)
 
-    def generate_activation_map(self, input_tensor):
-        """Generate activation map by aggregating feature maps."""
-        try:
-            # Forward pass to capture activations
-            with torch.no_grad():
-                _ = self.model(input_tensor)
+        if class_idx is None:
+            class_idx = output.argmax(dim=1).item()
 
-            if self.activations is None:
-                raise ValueError("Failed to capture activations")
+        # Backward pass for target class
+        self.model.zero_grad()
+        one_hot = torch.zeros_like(output)
+        one_hot[0, class_idx] = 1
+        output.backward(gradient=one_hot, retain_graph=True)
 
-            # Get activations [1, C, H, W]
-            activations = self.activations
+        if self.activations is None or self.gradients is None:
+            raise ValueError("Failed to capture activations or gradients")
 
-            # Aggregate feature maps by mean
-            activation_map = activations.mean(dim=1, keepdim=True)  # [1, 1, H, W]
+        activations = self.activations.detach()  # [1, C, H, W]
+        gradients = self.gradients.detach()  # [1, C, H, W]
 
-            # Apply ReLU to focus on positive activations
-            activation_map = F.relu(activation_map)
+        # Global average pool gradients → channel importance weights
+        pooled_gradients = gradients.mean(dim=[2, 3], keepdim=True)  # [1, C, 1, 1]
 
-            # Resize to 224x224
-            activation_map = F.interpolate(activation_map, size=(224, 224), mode='bilinear', align_corners=False)
+        # Weight activations by gradient importance and sum channels
+        cam = (activations * pooled_gradients).sum(dim=1, keepdim=True)  # [1, 1, H, W]
+        cam = F.relu(cam)
 
-            # Convert to numpy
-            activation_map = activation_map.squeeze().cpu().numpy()
+        # Resize to input size
+        cam = F.interpolate(cam, size=(224, 224), mode='bilinear', align_corners=False)
 
-            # Normalize to 0-255
-            if activation_map.max() > 0:
-                activation_map = (activation_map - activation_map.min()) / (activation_map.max() - activation_map.min())
-            activation_map = (activation_map * 255).astype(np.uint8)
+        # Normalize and convert
+        cam = cam.squeeze().cpu().numpy()
+        if cam.max() > cam.min():
+            cam = (cam - cam.min()) / (cam.max() - cam.min())
+        cam = (cam * 255).astype(np.uint8)
 
-            return activation_map
+        return cam
 
-        except Exception as e:
-            print(f"Activation map generation error: {e}")
-            raise
-
-    def generate_overlay(self, image, activation_map):
-        """Generate overlay of activation map on original image."""
-        # Apply colormap
-        heatmap = cv2.applyColorMap(activation_map, cv2.COLORMAP_JET)
-        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-
-        # Resize heatmap to match image
-        if image.shape[:2] != heatmap.shape[:2]:
-            heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
-
-        # Blend with original image
-        overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
-
-        return overlay, heatmap
+    def remove_hooks(self):
+        if hasattr(self, 'handle_forward') and self.handle_forward:
+            self.handle_forward.remove()
+        if hasattr(self, 'handle_backward') and self.handle_backward:
+            self.handle_backward.remove()
 
 
 def generate_gradcam(image_tensor, original_image):
-    """Generate attention visualization using activation maps."""
+    """Generate Grad-CAM attention visualization using gradient-based weighting."""
     try:
-        print("Generating attention visualization...")
-        # Create ActivationMap instance - use last conv layer for best results
-        activation_map = ActivationMap(model, target_layer="8.1")  # Last conv block in EfficientNet-B2
+        print("Generating Grad-CAM attention visualization...")
 
-        # Generate activation map
-        attention_map = activation_map.generate_activation_map(image_tensor)
+        # Create GradCAM instance targeting the last conv layer
+        cam = GradCAM(model, target_layer="8.0")
+
+        # Generate attention map
+        attention_map = cam.generate(image_tensor)
+        cam.remove_hooks()
 
         # Convert original image to numpy
         original_np = np.array(original_image)
@@ -204,8 +193,16 @@ def generate_gradcam(image_tensor, original_image):
         # Resize to 224x224 for processing
         original_resized = cv2.resize(original_np, (224, 224))
 
-        # Generate overlays
-        overlay, heatmap = activation_map.generate_overlay(original_resized, attention_map)
+        # Apply colormap
+        heatmap = cv2.applyColorMap(attention_map, cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+        # Resize heatmap to match image
+        if original_resized.shape[:2] != heatmap.shape[:2]:
+            heatmap = cv2.resize(heatmap, (original_resized.shape[1], original_resized.shape[0]))
+
+        # Blend with original image
+        overlay = cv2.addWeighted(original_resized, 0.6, heatmap, 0.4, 0)
 
         # Convert to base64
         import base64
@@ -219,11 +216,10 @@ def generate_gradcam(image_tensor, original_image):
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
         return {
-            "overlay": encode_image(overlay),
-            "heatmap": encode_image(heatmap)
+            "overlay": encode_image(overlay)
         }
     except Exception as e:
-        print(f"Attention visualization failed: {e}")
+        print(f"Grad-CAM generation failed: {e}")
         import traceback
         traceback.print_exc()
         return None

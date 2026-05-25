@@ -134,11 +134,6 @@ const LABELS = {
     ModerateDemented: 'Moderate Dementia',
 };
 
-const MODEL_NAMES = {
-    efficientnet_v2: 'EfficientNetV2-S',
-    convnext: 'ConvNeXt-Tiny',
-    vit: 'DeiT-Small',
-};
 
 function render(data) {
     const cls = data.predicted_class;
@@ -170,11 +165,8 @@ function render(data) {
     el.heatmapsContainer.innerHTML = '';
     addHM(previewUrl, 'Original Scan');
     if (data.gradcam_images) {
-        if (data.gradcam_images.heatmap) {
-            addHM('data:image/jpeg;base64,' + data.gradcam_images.heatmap, 'Grad-CAM Heatmap');
-        }
         if (data.gradcam_images.overlay) {
-            addHM('data:image/jpeg;base64,' + data.gradcam_images.overlay, 'Grad-CAM Overlay');
+            addHM('data:image/jpeg;base64,' + data.gradcam_images.overlay, 'Attention Map');
         }
     }
 
