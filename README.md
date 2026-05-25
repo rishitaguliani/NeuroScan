@@ -2,6 +2,8 @@
 
 A production-grade deep learning system for classifying Alzheimer's disease from brain MRI scans using EfficientNet-B2 architecture.
 
+<img width="1438" height="839" alt="Screenshot 2026-05-26 at 03 37 12" src="https://github.com/user-attachments/assets/ad00615b-a552-4d76-89d3-fe03fa222d90" />
+
 ## 🌟 Features
 
 - **99%+ Accuracy**: State-of-the-art classification performance
