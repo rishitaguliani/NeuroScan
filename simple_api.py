@@ -40,17 +40,26 @@ class EfficientNetB2Classifier(nn.Module):
         super().__init__()
         # Load pretrained EfficientNet-B2
         from torchvision.models import efficientnet_b2, EfficientNet_B2_Weights
-        self.backbone = efficientnet_b2(weights=EfficientNet_B2_Weights.IMAGENET1K_V1)
+
+        # Get the base model structure
+        base_model = efficientnet_b2(weights=EfficientNet_B2_Weights.IMAGENET1K_V1)
+
+        # Extract features and classifier directly to match saved checkpoint structure
+        self.features = base_model.features
 
         # Modify classifier for 4 classes
-        in_features = self.backbone.classifier[1].in_features
-        self.backbone.classifier = nn.Sequential(
+        in_features = base_model.classifier[1].in_features
+        self.classifier = nn.Sequential(
             nn.Dropout(p=0.3, inplace=True),
             nn.Linear(in_features, num_classes)
         )
 
     def forward(self, x):
-        return self.backbone(x)
+        x = self.features(x)
+        x = nn.functional.adaptive_avg_pool2d(x, (1, 1))
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        return x
 
 
 def load_model():
