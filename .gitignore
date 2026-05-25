@@ -42,9 +42,9 @@ OriginalDataset/
 AugmentedAlzheimerDataset/
 
 # Logs and outputs
-outputs/logs/
-outputs/figures/
-outputs/gradcam/
+logs/
+figures/
+gradcam/
 *.log
 
 # Models (too large for GitHub - use Git LFS or download separately)

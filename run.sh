@@ -94,10 +94,10 @@ fi
 
 # Step 6: Check if model exists
 print_step "Checking model file..."
-if [ ! -f "outputs/models/best_model_b2.pth" ]; then
-    error_exit "Model file not found at outputs/models/best_model_b2.pth"
+if [ ! -f "model/best_model_b2.pth" ]; then
+    error_exit "Model file not found at model/best_model_b2.pth"
 fi
-MODEL_SIZE=$(du -h "outputs/models/best_model_b2.pth" | cut -f1)
+MODEL_SIZE=$(du -h "model/best_model_b2.pth" | cut -f1)
 print_success "Model found (size: $MODEL_SIZE)"
 
 # Step 7: Check if port 8000 is available

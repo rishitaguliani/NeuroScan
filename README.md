@@ -51,9 +51,8 @@ The application will open at `http://localhost:8000`
 
 ```
 NeuroScan/
-├── outputs/
-│   └── models/
-│       └── best_model_b2.pth      # Pre-trained EfficientNet-B2 model (30MB)
+├── model/
+│   └── best_model_b2.pth          # Pre-trained EfficientNet-B2 model (30MB)
 ├── frontend/                      # Web UI assets
 │   ├── index.html
 │   ├── css/style.css

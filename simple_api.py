@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 
 # Paths
 BASE_DIR = Path(__file__).parent.absolute()
-MODEL_PATH = BASE_DIR / "outputs" / "models" / "best_model_b2.pth"
+MODEL_PATH = BASE_DIR / "model" / "best_model_b2.pth"
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 # Class metadata (matching frontend expectations)

@@ -83,8 +83,8 @@ echo.
 
 REM Step 6: Check if model exists
 echo [▶] Checking model file...
-if not exist "outputs\models\best_model_b2.pth" (
-    echo [✗] Model file not found at outputs\models\best_model_b2.pth
+if not exist "model\best_model_b2.pth" (
+    echo [✗] Model file not found at model\best_model_b2.pth
     pause
     exit /b 1
 )
