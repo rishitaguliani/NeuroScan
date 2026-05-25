@@ -170,9 +170,12 @@ function render(data) {
     el.heatmapsContainer.innerHTML = '';
     addHM(previewUrl, 'Original Scan');
     if (data.gradcam_images) {
-        Object.entries(data.gradcam_images).forEach(([k, b64]) => {
-            if (b64) addHM('data:image/jpeg;base64,' + b64, 'ViT Attention Map');
-        });
+        if (data.gradcam_images.heatmap) {
+            addHM('data:image/jpeg;base64,' + data.gradcam_images.heatmap, 'Grad-CAM Heatmap');
+        }
+        if (data.gradcam_images.overlay) {
+            addHM('data:image/jpeg;base64,' + data.gradcam_images.overlay, 'Grad-CAM Overlay');
+        }
     }
 
     showState('results');

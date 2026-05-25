@@ -6,12 +6,15 @@ from typing import Dict
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from PIL import Image
 import torchvision.transforms as transforms
+import cv2
+import numpy as np
 
 # Paths
 BASE_DIR = Path(__file__).parent.absolute()
@@ -96,6 +99,136 @@ def load_model():
         return False
 
 
+class ActivationMap:
+    """Activation Map visualization for EfficientNet-B2 - shows feature map activations."""
+
+    def __init__(self, model, target_layer):
+        self.model = model
+        self.target_layer = target_layer
+        self.activations = None
+        self.hook_handle = None
+
+        # Register forward hook
+        self.register_hook()
+
+    def register_hook(self):
+        """Register forward hook to capture activations."""
+        def forward_hook(module, input, output):
+            self.activations = output.detach().clone()
+
+        # Find the target layer and register hook
+        for name, module in self.model.features.named_modules():
+            if name == self.target_layer:
+                self.hook_handle = module.register_forward_hook(forward_hook)
+                break
+
+    def remove_hook(self):
+        """Remove the registered hook."""
+        if self.hook_handle:
+            self.hook_handle.remove()
+            self.hook_handle = None
+
+    def generate_activation_map(self, input_tensor):
+        """Generate activation map by aggregating feature maps."""
+        try:
+            # Forward pass to capture activations
+            with torch.no_grad():
+                _ = self.model(input_tensor)
+
+            if self.activations is None:
+                raise ValueError("Failed to capture activations")
+
+            # Get activations [1, C, H, W]
+            activations = self.activations
+
+            # Aggregate feature maps by mean
+            activation_map = activations.mean(dim=1, keepdim=True)  # [1, 1, H, W]
+
+            # Apply ReLU to focus on positive activations
+            activation_map = F.relu(activation_map)
+
+            # Resize to 224x224
+            activation_map = F.interpolate(activation_map, size=(224, 224), mode='bilinear', align_corners=False)
+
+            # Convert to numpy
+            activation_map = activation_map.squeeze().cpu().numpy()
+
+            # Normalize to 0-255
+            if activation_map.max() > 0:
+                activation_map = (activation_map - activation_map.min()) / (activation_map.max() - activation_map.min())
+            activation_map = (activation_map * 255).astype(np.uint8)
+
+            return activation_map
+
+        except Exception as e:
+            print(f"Activation map generation error: {e}")
+            raise
+
+    def generate_overlay(self, image, activation_map):
+        """Generate overlay of activation map on original image."""
+        # Apply colormap
+        heatmap = cv2.applyColorMap(activation_map, cv2.COLORMAP_JET)
+        heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
+        # Resize heatmap to match image
+        if image.shape[:2] != heatmap.shape[:2]:
+            heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+
+        # Blend with original image
+        overlay = cv2.addWeighted(image, 0.6, heatmap, 0.4, 0)
+
+        return overlay, heatmap
+
+
+def generate_gradcam(image_tensor, original_image):
+    """Generate attention visualization using activation maps."""
+    try:
+        print("Generating attention visualization...")
+        # Create ActivationMap instance - use last conv layer for best results
+        activation_map = ActivationMap(model, target_layer="8.1")  # Last conv block in EfficientNet-B2
+
+        # Generate activation map
+        attention_map = activation_map.generate_activation_map(image_tensor)
+
+        # Convert original image to numpy
+        original_np = np.array(original_image)
+
+        # Handle grayscale
+        if len(original_np.shape) == 2:
+            original_np = cv2.cvtColor(original_np, cv2.COLOR_GRAY2RGB)
+
+        # Ensure RGB
+        if original_np.shape[2] == 4:
+            original_np = original_np[:, :, :3]
+
+        # Resize to 224x224 for processing
+        original_resized = cv2.resize(original_np, (224, 224))
+
+        # Generate overlays
+        overlay, heatmap = activation_map.generate_overlay(original_resized, attention_map)
+
+        # Convert to base64
+        import base64
+        from io import BytesIO
+
+        def encode_image(img_array):
+            """Convert numpy array to base64 string."""
+            img = Image.fromarray(img_array.astype(np.uint8))
+            buffer = BytesIO()
+            img.save(buffer, format='JPEG', quality=85)
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return {
+            "overlay": encode_image(overlay),
+            "heatmap": encode_image(heatmap)
+        }
+    except Exception as e:
+        print(f"Attention visualization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 # Image preprocessing
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -170,6 +303,7 @@ async def predict(file: UploadFile = File(...)):
     try:
         # Load and preprocess image
         image = Image.open(io.BytesIO(contents)).convert("RGB")
+        original_image = image.copy()  # Keep original for GradCAM
         input_tensor = transform(image).unsqueeze(0).to(device)
 
         # Get prediction
@@ -188,8 +322,23 @@ async def predict(file: UploadFile = File(...)):
             for i in range(len(CLASS_NAMES))
         }
 
+        # Generate GradCAM attention heatmaps
+        gradcam_images = None
+        try:
+            print("Generating GradCAM attention heatmaps...")
+            gradcam_images = generate_gradcam(input_tensor, original_image)
+            if gradcam_images:
+                print("✅ GradCAM generated successfully")
+            else:
+                print("⚠️  GradCAM generation returned None")
+        except Exception as gradcam_error:
+            print(f"⚠️  GradCAM generation failed: {gradcam_error}")
+            import traceback
+            traceback.print_exc()
+            gradcam_images = None
+
         # Build response
-        return {
+        response = {
             "predicted_class": predicted_class,
             "confidence": confidence,
             "description": CLASS_DESCRIPTIONS[predicted_class],
@@ -201,6 +350,12 @@ async def predict(file: UploadFile = File(...)):
                 "device": str(device)
             }
         }
+
+        # Add GradCAM images if generation succeeded
+        if gradcam_images:
+            response["gradcam_images"] = gradcam_images
+
+        return response
 
     except Exception as e:
         import traceback
